@@ -2,7 +2,7 @@ using System;
 using Models.Core;
 using Models.Interfaces;
 using Models.PMF;
-
+// I used chatGPT to arrive in this script and help from the APSIMx Q&A
 
 namespace Models
 {
