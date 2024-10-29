@@ -1,0 +1,110 @@
+using Models.Soils;
+using System.Linq;
+using System;
+using Models.Core;
+using Models.PMF;
+using APSIM.Shared.Utilities;
+// developed with the help of chatGPT, does not have anything about fallow, so I do not if it is going to work with fallow
+// script for sequencial planting in long simulations
+namespace Models
+{
+    [Serializable]
+    [System.Xml.Serialization.XmlInclude(typeof(Model))]
+    public class Script : Model
+    {
+        [Link] private Clock Clock;
+        [Link] private Sugarcane Sugarcane;
+
+        [Description("Fixed planting date for the first sowing (dd-mmm)")]
+        public string FirstPlantingDate { get; set; }
+
+        [Description("Planting variety")]
+        [Display(Type = DisplayType.CultivarName, PlantName = "Sugarcane")]
+        public string variety { get; set; }
+
+        [Description("Duration of a plant crop (days)")]
+        public int plantlen { get; set; }
+
+        [Description("Duration of a ratoon crop (days)")]
+        public int ratoonlen { get; set; }
+
+        [Description("Number of days after EndCrop for subsequent sowings")]
+        public int DaysAfterEndCrop { get; set; }
+
+        [Description("Number of ratoons before EndCrop")]
+        public int NoRatoons { get; set; }
+
+        [Description("Stalk density for the crop (/m2)")]
+        public double plant_stalks { get; set; }
+
+        [Description("Stalk density for the ratoon (/m2)")]
+        public double ratoon_stalks { get; set; }
+
+        [Description("Planting depth (mm)")]
+        public double sowing_depth { get; set; }
+
+        private bool firstSowingDone = false;
+        private int daysAfterEndCrop = 0; // Track days after end of crop
+
+        [EventSubscribe("StartOfDay")]
+        private void OnStartOfDay(object sender, EventArgs e)
+        {
+            if (!firstSowingDone)
+            {
+                // Perform the first sowing on the specified date
+                if (DateUtilities.DatesEqual(FirstPlantingDate, Clock.Today))
+                {
+                    Sugarcane.SowNewPlant(PlantingDensity: 10, Depth: sowing_depth, CultivarName: variety);
+                    Sugarcane.plants=plant_stalks;
+                    firstSowingDone = true;
+                }
+            }
+            else
+            {
+                // Harvest plant crop if alive and ready
+                if (Sugarcane.crop_status == "alive" && Sugarcane.DaysAfterSowing >= plantlen && Sugarcane.ratoon_no == 0)
+                {
+                    Sugarcane.HarvestCrop();
+                    daysAfterEndCrop = 0; // Reset after harvest
+                }
+
+                // Harvest ratoon crop if alive and ready
+                if (Sugarcane.crop_status == "alive" && Sugarcane.DaysAfterSowing >= ratoonlen && Sugarcane.ratoon_no > 0)
+                {
+                    Sugarcane.HarvestCrop();
+                    daysAfterEndCrop = 0; // Reset after harvest
+                }
+
+                // Check if we need to plough out the crop
+                if (Sugarcane.ratoon_no == NoRatoons + 1)
+                {
+                    Sugarcane.KillCrop(); // Plough out the crop
+                    Sugarcane.EndCrop();
+                }
+                else if (Sugarcane.crop_status == "alive")
+                {
+                    // Set stalk density for ratoon crops
+                    Sugarcane.plants = ratoon_stalks;
+                }
+                else if (Sugarcane.crop_status == "dead")
+                {
+                    Sugarcane.HarvestCrop();
+                    Sugarcane.EndCrop();
+                }
+
+                // Sowing logic for the next crop
+                if (Sugarcane.crop_status == "out")
+                {
+                    daysAfterEndCrop++; // Increment days after end crop
+
+                    if (daysAfterEndCrop >= DaysAfterEndCrop)
+                    {
+                        Sugarcane.SowNewPlant(PlantingDensity: 10, Depth: sowing_depth, CultivarName: variety);
+                        Sugarcane.plants = plant_stalks; // Reset stalk density for new plant
+                        daysAfterEndCrop = 0; // Reset after new sowing
+                    }
+                }
+            }
+        }
+    }
+}
