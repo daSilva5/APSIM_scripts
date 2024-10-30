@@ -1,0 +1,149 @@
+using System;
+using Models.Core;
+using Models.PMF;
+using APSIM.Shared.Utilities;
+using Models.Surface;
+// not working =/
+namespace Models
+{
+    [Serializable]
+    public class Script : Model
+    {
+        [Link] private Clock Clock;
+        [Link] private SurfaceOrganicMatter SOM;
+        [Link] private Sugarcane Sugarcane;
+
+        [Description("First tillage operation date")]
+        public string first_tillage_date { get; set; }
+
+        [Description("First tillage depth (mm)")]
+        public double first_tillage_depth { get; set; }
+
+        [Description("First tillage Fraction of Residues To Incorporate (0-1)")]
+        public double first_tillage_fraction { get; set; }
+
+        [Description("Second tillage? yes=1")]
+        public double second_tillage_test { get; set; }
+
+        [Description("Second tillage depth (mm)")]
+        public double second_tillage_depth { get; set; }
+
+        [Description("Second tillage Fraction of Residues To Incorporate (0-1)")]
+        public double second_tillage_fraction { get; set; }
+
+        [Description("Third tillage? Yes=1")]
+        public double third_tillage_test { get; set; }
+
+        [Description("Third tillage depth (mm)")]
+        public double third_tillage_depth { get; set; }
+
+        [Description("Third tillage Fraction of Residues To Incorporate (0-1)")]
+        public double third_tillage_fraction { get; set; }
+
+        [Description("Fourth tillage? Yes=1")]
+        public double fourth_tillage_test { get; set; }
+
+        [Description("Fourth tillage depth (mm)")]
+        public double fourth_tillage_depth { get; set; }
+
+        [Description("Fourth tillage Fraction of Residues To Incorporate (0-1)")]
+        public double fourth_tillage_fraction { get; set; }
+
+        [Description("Number of days after end crop for subsequent tillages")]
+        public int DaysAfterEndCrop { get; set; }
+
+        public int NoRatoons { get; set; }
+
+        private bool firstTillageDone = false;
+        private bool secondTillageDone = false;
+        private bool thirdTillageDone = false;
+        private bool fourthTillageDone = false;
+        private bool ratoonConditionMet= false;
+        
+        private int daysAfterEndCrop = 0; // Track days after end of crop
+        [Link] private ISummary Summary;
+
+        [EventSubscribe("DoManagement")]
+private void OnDoManagement(object sender, EventArgs e)
+{
+    // Increment days after end crop if crop status is "out"
+    if (Sugarcane.crop_status == "out")
+    {
+        daysAfterEndCrop++; // Increment only if the crop status is "out"
+
+        // Check for ratoon condition
+        if (Sugarcane.ratoon_no == NoRatoons + 1)
+        {
+            Summary.WriteMessage(this, $"Ratoon condition met! Ratoon number {Sugarcane.ratoon_no} reached.", MessageType.Information);
+            ratoonConditionMet = true; // Set the flag to true
+        }
+
+        // Perform first tillage if not done and fixed date condition met
+        if (!firstTillageDone && DateUtilities.DatesEqual(first_tillage_date, Clock.Today))
+        {
+            SOM.Incorporate(first_tillage_fraction, first_tillage_depth);
+            Summary.WriteMessage(this, $"First tillage operation performed on fixed date {first_tillage_date}.", MessageType.Information);
+            firstTillageDone = true; // Mark as done
+        }
+
+        // If first tillage is done and ratoon condition is met, check if we can reapply after days after end crop
+        if (firstTillageDone && ratoonConditionMet && daysAfterEndCrop >= DaysAfterEndCrop)
+        {
+            SOM.Incorporate(first_tillage_fraction, first_tillage_depth);
+            Summary.WriteMessage(this, $"First tillage operation reapplied after {daysAfterEndCrop} days after end crop.", MessageType.Information);
+            // Optionally reset firstTillageDone to allow for another application if desired
+            // firstTillageDone = false; // Uncomment if you want to allow reapplication
+        }
+
+        // Perform subsequent tillages if needed
+        PerformTillageIfNeeded();
+    }
+    else
+    {
+        // Reset daysAfterEndCrop and tillage flags when crop is not "out"
+        daysAfterEndCrop = 0;
+        ResetTillageFlags();
+        ratoonConditionMet = false; // Reset ratoon condition as crop is not "out"
+    }
+}
+
+
+        private void PerformTillageIfNeeded()
+        {
+            // Second tillage operation
+            if (second_tillage_test == 1 && !secondTillageDone && daysAfterEndCrop >= DaysAfterEndCrop)
+            {
+                SOM.Incorporate(second_tillage_fraction, second_tillage_depth);
+                Summary.WriteMessage(this, "Second tillage operation performed.", MessageType.Information);
+                secondTillageDone = true; // Mark as done
+                return; // Exit to prevent further tillage
+            }
+
+            // Third tillage operation
+            if (third_tillage_test == 1 && !thirdTillageDone && daysAfterEndCrop >= DaysAfterEndCrop)
+            {
+                SOM.Incorporate(third_tillage_fraction, third_tillage_depth);
+                Summary.WriteMessage(this, "Third tillage operation performed.", MessageType.Information);
+                thirdTillageDone = true; // Mark as done
+                return; // Exit to prevent further tillage
+            }
+
+            // Fourth tillage operation
+            if (fourth_tillage_test == 1 && !fourthTillageDone && daysAfterEndCrop >= DaysAfterEndCrop)
+            {
+                SOM.Incorporate(fourth_tillage_fraction, fourth_tillage_depth);
+                Summary.WriteMessage(this, "Fourth tillage operation performed.", MessageType.Information);
+                fourthTillageDone = true; // Mark as done
+            }
+        }
+
+        private void ResetTillageFlags()
+        {
+            // Reset tillage flags if the crop is not "out"
+            secondTillageDone = false;
+            thirdTillageDone = false;
+            fourthTillageDone = false;
+            // Optionally keep firstTillageDone as is if you don't want to reset it
+        }
+    }
+}
